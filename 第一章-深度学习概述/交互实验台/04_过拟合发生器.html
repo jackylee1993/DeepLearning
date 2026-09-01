@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>实验台④ 过拟合发生器</title>
+<style>
+  :root { --navy:#1B3A6B; --blue:#2F6FD6; --pale:#ECF3FC; --ink:#22324A; --mute:#76869F; --orange:#D97724; --green:#2E7D52; --red:#B8413A; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei",sans-serif; background:#f4f6f9; color:var(--ink); padding:18px; }
+  .head { max-width:1080px; margin:0 auto 14px; background:var(--navy); border-radius:10px; padding:14px 22px; color:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .head h1 { font-size:19px; } .head span { font-size:12.5px; color:#8FB4E8; }
+  .wrap { max-width:1080px; margin:0 auto; display:flex; gap:14px; }
+  .panel { width:280px; background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  .stage { flex:1; background:#fff; border-radius:10px; padding:14px; box-shadow:0 1px 8px rgba(0,0,0,.06); display:flex; gap:14px; align-items:flex-start; }
+  canvas { display:block; border-radius:8px; background:#FAFBFD; border:1px solid #D9E4F2; max-width:100%; }
+  h3 { font-size:13.5px; color:var(--navy); margin:10px 0 8px; border-left:3px solid var(--blue); padding-left:8px; }
+  label { font-size:12.5px; display:flex; justify-content:space-between; margin:6px 0 2px; }
+  label b { color:var(--blue); }
+  input[type=range] { width:100%; accent-color:var(--blue); }
+  button { border:none; border-radius:7px; padding:8px 0; font-size:13px; cursor:pointer; width:100%; margin-top:6px; font-family:inherit; }
+  .b-ghost { background:var(--pale); color:var(--navy); } .b-ghost:hover { background:#DCE9FA; }
+  .stats { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .chip { background:var(--pale); border-radius:6px; padding:5px 9px; font-size:11.5px; color:var(--navy); }
+  .chip b { color:var(--blue); }
+  .tip { max-width:1080px; margin:12px auto 0; background:#FFF9EC; border:1px dashed #EAB308; border-radius:8px; padding:10px 16px; font-size:12.5px; color:#713F12; }
+  .leg { font-size:11.5px; color:var(--mute); margin-top:8px; }
+  .sw { display:inline-block; width:22px; height:4px; border-radius:2px; margin:0 4px -2px 8px; }
+</style>
+</head>
+<body>
+<div class="head"><h1>实验台④ · 过拟合发生器</h1><span>知识点：过拟合/欠拟合 · 训练集与测试集 · 泛化</span></div>
+<div class="wrap">
+  <div class="panel">
+    <h3>参数</h3>
+    <label>多项式阶数 <b id="dV">3</b></label>
+    <input type="range" id="deg" min="1" max="15" step="1" value="3" oninput="dV.textContent=this.value; refit()">
+    <label>噪声强度 <b id="nV">0.20</b></label>
+    <input type="range" id="noise" min="0" max="0.6" step="0.02" value="0.2" oninput="nV.textContent=(+this.value).toFixed(2); resample()">
+    <label>训练样本数 <b id="sV">20</b></label>
+    <input type="range" id="npts" min="8" max="60" step="1" value="20" oninput="sV.textContent=this.value; resample()">
+    <h3>控制</h3>
+    <button class="b-ghost" onclick="resample()">重新采样数据</button>
+    <div class="stats">
+      <span class="chip">训练误差 <b id="trE">-</b></span>
+      <span class="chip">测试误差 <b id="teE">-</b></span>
+      <span class="chip">诊断 <b id="dg">-</b></span>
+    </div>
+    <div class="leg">左图：蓝点=训练样本，蓝线=拟合曲线，灰虚线=真实规律<span class="sw" style="background:#2F6FD6"></span>训练<span class="sw" style="background:#D97724"></span>测试误差</div>
+  </div>
+  <div class="stage"><canvas id="cv" width="460" height="500" style="flex-shrink:0"></canvas><canvas id="cv2" width="330" height="500" style="flex-shrink:0"></canvas></div>
+</div>
+<div class="tip"><b>课堂玩法：</b>① 从阶数 1 拖到 15，观察左图拟合曲线从"直尺"变"疯狂扭动"，右图两条误差曲线在阶数≈4 处分叉——训练误差一直降、测试误差先降后升；② 拖噪声强度，噪声越大分叉越早；③ 问学生：测试集为什么不能偷看？对应 PPT：第一章 p.22 后新增"过拟合与数据划分"。</div>
+<script>
+var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+var cv2=document.getElementById('cv2'),ctx2=cv2.getContext('2d');
+var W=cv.width,H=cv.height,W2=cv2.width,H2=cv2.height;
+var XMIN=0,XMAX=1;
+function f0(x){return 0.8*Math.sin(2.2*x)+0.25*x}
+function px(x){return (x-XMIN)/(XMAX-XMIN)*W}
+function py(y){return H-(y-YMIN)/(YMAX-YMIN)*H}
+var data=[], noise=0.2, deg=3;
+function gauss(){var u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+function resample(){noise=+document.getElementById('noise').value;var n=+document.getElementById('npts').value;
+  data=[];for(var i=0;i<n;i++){var x=i/(n-1);data.push({x:x,y:f0(x)+noise*gauss()})}refit()}
+function polyfit(Xs,ys,deg){
+  // 正规方程 (A^T A + λI) w = A^T y，λ=1e-8 防病态
+  var n=Xs.length,d=deg+1,A=[],AtA=[],Aty=[],w=[];
+  for(var i=0;i<n;i++){var row=[];var p=1;for(var j=0;j<d;j++){row.push(p);p*=Xs[i]}A.push(row)}
+  for(var a=0;a<d;a++){AtA.push([]);Aty.push(0);for(var b=0;b<d;b++)AtA[a].push(0)}
+  for(var k=0;k<n;k++)for(var c=0;c<d;c++){Aty[c]+=A[k][c]*ys[k];for(var e=0;e<d;e++)AtA[c][e]+=A[k][c]*A[k][e]}
+  for(var f=0;f<d;f++)AtA[f][f]+=1e-8;
+  // 高斯消元
+  var m=d;
+  for(var col=0;col<m;col++){var mx=col;for(var r=col+1;r<m;r++)if(Math.abs(AtA[r][col])>Math.abs(AtA[mx][col]))mx=r;
+    var tmp=AtA[col];AtA[col]=AtA[mx];AtA[mx]=tmp;tmp=Aty[col];Aty[col]=Aty[mx];Aty[mx]=tmp;
+    for(var r2=col+1;r2<m;r2++){var fac=AtA[r2][col]/AtA[col][col];for(var c2=col;c2<m;c2++)AtA[r2][c2]-=fac*AtA[col][c2];Aty[r2]-=fac*Aty[col]}}
+  for(var b2=m-1;b2>=0;b2--){var s=Aty[b2];for(var c3=b2+1;c3<m;c3++)s-=AtA[b2][c3]*w[c3];w[b2]=s/AtA[b2][b2]}
+  return w}
+function evalpoly(w,x){var s=0,p=1;for(var i=0;i<w.length;i++){s+=w[i]*p;p*=x}return s}
+function mse(w,pts){var s=0;for(var i=0;i<pts.length;i++){var e=evalpoly(w,pts[i].x)-pts[i].y;s+=e*e}return s/pts.length}
+var errHist=[];
+function refit(){
+  deg=+document.getElementById('deg').value;
+  var xs=data.map(function(d){return d.x}),ys=data.map(function(d){return d.y});
+  var w=polyfit(xs,ys,deg);
+  var testPts=[];for(var i=0;i<=200;i++){var x=i/200;testPts.push({x:x,y:f0(x)})}
+  var te=mse(w,testPts),tr=mse(w,data);
+  document.getElementById('trE').textContent=tr.toFixed(4);
+  document.getElementById('teE').textContent=te.toFixed(4);
+  var dg=document.getElementById('dg');
+  if(deg<=3) dg.textContent='欠拟合（太简单，学不到规律）';
+  else if(deg>=10) dg.textContent='过拟合（背答案，测试反而差）';
+  else dg.textContent='适中（泛化最好）';
+  draw(w,tr,te);}
+var YMIN=-1.8,YMAX=1.8;
+function draw(w,tr,te){
+  ctx.clearRect(0,0,W,H);
+  // 动态 Y 范围：依据数据与拟合曲线
+  var ys=[],data2=data;
+  for(var k=0;k<data2.length;k++){ys.push(data2[k].y)}
+  for(var k2=0;k2<=100;k2++){var xk=k2/100;ys.push(evalpoly(w,xk));ys.push(f0(xk));}
+  var lo=Math.min.apply(null,ys),hi=Math.max.apply(null,ys);
+  var pad=(hi-lo)*0.15+0.2;YMIN=lo-pad;YMAX=hi+pad;
+  ctx.strokeStyle='#E3EAF3';for(var gx=0;gx<=1;gx+=0.25){ctx.beginPath();ctx.moveTo(px(gx),0);ctx.lineTo(px(gx),H);ctx.stroke()}
+  for(var gy=Math.ceil(YMIN);gy<=YMAX;gy+=1){ctx.beginPath();ctx.moveTo(0,py(gy));ctx.lineTo(W,py(gy));ctx.stroke()}
+  // 真实规律（灰虚线）
+  ctx.strokeStyle='#9AA8BE';ctx.setLineDash([5,5]);ctx.lineWidth=1.5;ctx.beginPath();
+  for(var i=0;i<=200;i++){var xx=i/200;var yy=f0(xx);if(i===0)ctx.moveTo(px(xx),py(yy));else ctx.lineTo(px(xx),py(yy));}
+  ctx.stroke();ctx.setLineDash([]);
+  // 拟合曲线
+  ctx.strokeStyle='#2F6FD6';ctx.lineWidth=2.5;ctx.beginPath();
+  for(var j=0;j<=200;j++){var x2=j/200;var y2=evalpoly(w,x2);if(j===0)ctx.moveTo(px(x2),py(y2));else ctx.lineTo(px(x2),py(y2));}
+  ctx.stroke();
+  // 训练点
+  data.forEach(function(d){ctx.beginPath();ctx.arc(px(d.x),py(d.y),4,0,7);ctx.fillStyle='#D97724';ctx.fill()});
+  ctx.fillStyle='#76869F';ctx.font='12px sans-serif';ctx.fillText('阶数='+deg,12,20);
+  // 右图：误差 vs 阶数（对数尺度，保证两条曲线都可见）
+  ctx2.clearRect(0,0,W2,H2);
+  var hist=[];
+  for(var d2=1;d2<=15;d2++){var ww=polyfit(data.map(function(d){return d.x}),data.map(function(d){return d.y}),d2);
+    var tp=[];for(var t=0;t<=200;t++){var x3=t/200;tp.push({x:x3,y:f0(x3)})}
+    hist.push({d:d2,tr:mse(ww,data),te:mse(ww,tp)})}
+  var minE=1e-6,maxE=0;hist.forEach(function(h){maxE=Math.max(maxE,h.te,h.tr);minE=Math.min(minE,h.tr,h.te)});
+  function p2x(d){return 30+(d-1)/14*(W2-50)} function p2y(v){return H2-20-(Math.log(Math.max(v,minE)/minE)/Math.log(maxE/minE))*(H2-50)}
+  ctx2.strokeStyle='#E3EAF3';for(var g=0;g<=4;g++){var lv=minE*Math.pow(maxE/minE,g/4);ctx2.beginPath();ctx2.moveTo(30,p2y(lv));ctx2.lineTo(W2-20,p2y(lv));ctx2.stroke()}
+  function line2(arr,color,key){ctx2.strokeStyle=color;ctx2.lineWidth=2;ctx2.beginPath();
+    arr.forEach(function(h,i){var v=h[key];if(i===0)ctx2.moveTo(p2x(h.d),p2y(v));else ctx2.lineTo(p2x(h.d),p2y(v))});ctx2.stroke()}
+  line2(hist,'#2F6FD6','tr');
+  line2(hist,'#D97724','te');
+  // 当前阶数标记（测试误差点）
+  ctx2.fillStyle='#B8413A';ctx2.beginPath();ctx2.arc(p2x(deg),p2y(hist[deg-1].te),5,0,7);ctx2.fill();
+  ctx2.fillStyle='#76869F';ctx2.font='11px sans-serif';ctx2.fillText('训练误差(蓝) vs 测试误差(橙)',12,18);
+  ctx2.fillText('阶数 →',W2-70,H2-6);ctx2.fillText('误差(对数) →',4,18);}
+resample();
+</script>
+</body>
+</html>

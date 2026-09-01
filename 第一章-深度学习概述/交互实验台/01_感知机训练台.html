@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>实验台① 感知机训练台</title>
+<style>
+  :root { --navy:#1B3A6B; --blue:#2F6FD6; --pale:#ECF3FC; --ink:#22324A; --mute:#76869F; --orange:#D97724; --green:#2E7D52; --red:#B8413A; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei",sans-serif; background:#f4f6f9; color:var(--ink); padding:18px; }
+  .head { max-width:1060px; margin:0 auto 14px; background:var(--navy); border-radius:10px; padding:14px 22px; color:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .head h1 { font-size:19px; } .head span { font-size:12.5px; color:#8FB4E8; }
+  .wrap { max-width:1060px; margin:0 auto; display:flex; gap:14px; }
+  .panel { width:300px; background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  .stage { flex:1; background:#fff; border-radius:10px; padding:14px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  canvas { display:block; border-radius:8px; background:#FAFBFD; border:1px solid #D9E4F2; max-width:100%; }
+  h3 { font-size:13.5px; color:var(--navy); margin:10px 0 8px; border-left:3px solid var(--blue); padding-left:8px; }
+  label { font-size:12.5px; display:flex; justify-content:space-between; margin:6px 0 2px; }
+  label b { color:var(--blue); }
+  input[type=range] { width:100%; accent-color:var(--blue); }
+  button { border:none; border-radius:7px; padding:8px 0; font-size:13px; cursor:pointer; width:100%; margin-top:6px; font-family:inherit; }
+  .b-main { background:var(--blue); color:#fff; } .b-main:hover { background:#2459B0; }
+  .b-ghost { background:var(--pale); color:var(--navy); } .b-ghost:hover { background:#DCE9FA; }
+  .b-red { background:#FBEAE9; color:var(--red); }
+  .seg { display:flex; gap:6px; margin:4px 0 2px; }
+  .seg button { margin:0; padding:7px 0; font-size:12px; }
+  .seg .on { background:var(--navy); color:#fff; } .seg .off { background:var(--pale); color:var(--navy); }
+  .stats { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .chip { background:var(--pale); border-radius:6px; padding:5px 9px; font-size:11.5px; color:var(--navy); }
+  .chip b { color:var(--blue); }
+  .tip { max-width:1060px; margin:12px auto 0; background:#FFF9EC; border:1px dashed #EAB308; border-radius:8px; padding:10px 16px; font-size:12.5px; color:#713F12; }
+  .formula { background:var(--navy); color:#fff; border-radius:8px; padding:10px 12px; font-size:13px; margin-top:10px; text-align:center; font-family:Consolas,monospace; }
+  .legend { font-size:12px; color:var(--mute); margin-top:6px; }
+  .dotb,.doto { display:inline-block; width:10px; height:10px; border-radius:50%; margin:0 3px -1px 6px; }
+  .dotb{background:var(--blue);} .doto{background:var(--orange);}
+</style>
+</head>
+<body>
+<div class="head"><h1>实验台① · 感知机训练台</h1><span>知识点：感知机学习规则 · 线性可分 · 学习率</span></div>
+<div class="wrap">
+  <div class="panel">
+    <h3>数据集</h3>
+    <div class="seg">
+      <button id="d1" class="on" onclick="setDS(0)">线性可分</button>
+      <button id="d2" class="off" onclick="setDS(1)">异或(不可分)</button>
+      <button id="d3" class="off" onclick="setDS(2)">强重叠</button>
+    </div>
+    <label>学习率 η <b id="lrV">0.50</b></label>
+    <input type="range" id="lr" min="0.02" max="2" step="0.02" value="0.5" oninput="lrV.textContent=(+this.value).toFixed(2); LR=+this.value">
+    <label>添加点类别</label>
+    <div class="seg">
+      <button id="cb" class="on" onclick="setBrush(1)">● 蓝类 (+1)</button>
+      <button id="co" class="off" onclick="setBrush(-1)">● 橙类 (−1)</button>
+    </div>
+    <h3>控制</h3>
+    <button class="b-main" id="play" onclick="togglePlay()">▶ 自动训练</button>
+    <button class="b-ghost" onclick="stepOnce()">单步 ×1（处理一个错分点）</button>
+    <button class="b-red" onclick="resetW()">重置权重 w=(0,0), b=0</button>
+    <div class="stats">
+      <span class="chip">轮次 <b id="ep">0</b></span>
+      <span class="chip">本轮错分 <b id="err">-</b></span>
+      <span class="chip">状态 <b id="st">就绪</b></span>
+    </div>
+    <div class="formula">w ← w + η·(t − p)·x<br>b ← b + η·(t − p)</div>
+    <div class="legend">在右侧画布<span class="dotb"></span>单击 = 加蓝类点<span class="doto"></span>单击 = 加橙类点</div>
+  </div>
+  <div class="stage"><canvas id="cv" width="700" height="540"></canvas></div>
+</div>
+<div class="tip"><b>课堂玩法：</b>① 默认数据点“自动训练”，看直线如何一步步切开两类点；② 切到“异或”再跑——观察直线来回震荡、永不收敛（第一次寒冬的死穴）；③ 让学生上台点画布加点，全班猜直线会往哪移。对应 PPT：第二章 p.14-18。</div>
+<script>
+var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+var W=cv.width,H=cv.height,R=1.2;
+function PX(x){return (x+R)/(2*R)*W} function PY(y){return H-(y+R)/(2*R)*H}
+function IX(px){return px/W*2*R-R} function IY(py){return (H-py)/H*2*R-R}
+var LR=0.5, brush=1, ds=0, pts=[], w=[0,0], b=0, epoch=0, ord=[], oi=0, timer=null, lastErr=0;
+function mk(n,x,y,s,t){for(var i=0;i<n;i++)pts.push({x:x+(Math.random()*2-1)*s,y:y+(Math.random()*2-1)*s,t:t})}
+function genDS(){pts=[];
+  if(ds===0){mk(11,-0.55,-0.45,0.22,1);mk(11,0.55,0.45,0.22,-1);}
+  if(ds===1){mk(6,-0.62,-0.62,0.16,1);mk(6,0.62,0.62,0.16,1);mk(6,-0.62,0.62,0.16,-1);mk(6,0.62,-0.62,0.16,-1);pts.forEach(function(p){p.t=(p.x*p.y>0)?1:-1});}
+  if(ds===2){mk(12,-0.3,-0.25,0.45,1);mk(12,0.3,0.25,0.45,-1);}
+  resetW();}
+function resetW(){w=[0,0];b=0;epoch=0;oi=0;ord=pts.map(function(_,i){return i});shuffle(ord);stop();document.getElementById('st').textContent='就绪';draw();}
+function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}}
+function pred(p){return (w[0]*p.x+w[1]*p.y+b)>=0?1:-1}
+function stepOnce(){
+  if(!pts.length)return; var n=pts.length,err=0;
+  for(var k=0;k<n;k++){var p=pts[ord[oi%n]];oi++;
+    if(oi%n===0){epoch++;err=0}
+    var pr=pred(p);
+    if(pr!==p.t){w[0]+=LR*(p.t-pr)*p.x;w[1]+=LR*(p.t-pr)*p.y;b+=LR*(p.t-pr);err++;lastErr=err;
+      document.getElementById('ep').textContent=epoch;draw();
+      if(oi%n===0)afterPass(err);
+      return;}}
+  afterPass(0);}
+function afterPass(e){document.getElementById('err').textContent=e;
+  if(e===0){document.getElementById('st').textContent='收敛 ✓（一整轮全对）';stop();}
+  else document.getElementById('st').textContent='训练中…';}
+function togglePlay(){timer?stop():start()}
+function start(){if(timer)return;document.getElementById('play').textContent='⏸ 暂停';timer=setInterval(stepOnce,140)}
+function stop(){if(timer){clearInterval(timer);timer=null}document.getElementById('play').textContent='▶ 自动训练'}
+function setDS(i){ds=i;['d1','d2','d3'].forEach(function(id,j){document.getElementById(id).className=j===i?'on':'off'});genDS()}
+function setBrush(c){brush=c;document.getElementById('cb').className=c===1?'on':'off';document.getElementById('co').className=c===-1?'on':'off'}
+cv.addEventListener('click',function(ev){var r=cv.getBoundingClientRect();var x=IX(ev.clientX-r.left),y=IY(ev.clientY-r.top);pts.push({x:x,y:y,t:brush});ord.push(pts.length-1);stop();draw()});
+function draw(){ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle='#D9E4F2';for(var g=-1;g<=1;g++){ctx.beginPath();ctx.moveTo(PX(g),0);ctx.lineTo(PX(g),H);ctx.stroke();ctx.beginPath();ctx.moveTo(0,PY(g));ctx.lineTo(W,PY(g));ctx.stroke();}
+  // 决策直线 w1*x+w2*y+b=0
+  var a=w[0],c=w[1],bb=b;
+  ctx.lineWidth=2.5;ctx.strokeStyle='#2F6FD6';ctx.beginPath();
+  if(Math.abs(c)>1e-6){ctx.moveTo(PX(-R),PY(-(a*(-R)+bb)/c));ctx.lineTo(PX(R),PY(-(a*R+bb)/c));}
+  else if(Math.abs(a)>1e-6){ctx.moveTo(PX(-bb/a),PY(-R));ctx.lineTo(PX(-bb/a),PY(R));}
+  ctx.stroke();ctx.lineWidth=1;
+  pts.forEach(function(p){ctx.beginPath();ctx.arc(PX(p.x),PY(p.y),7,0,7);ctx.fillStyle=p.t===1?'#2F6FD6':'#D97724';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();ctx.lineWidth=1;});
+  ctx.fillStyle='#76869F';ctx.font='12px sans-serif';ctx.fillText('w1='+w[0].toFixed(2)+'  w2='+w[1].toFixed(2)+'  b='+b.toFixed(2),12,20);}
+genDS();draw();
+</script>
+</body>
+</html>

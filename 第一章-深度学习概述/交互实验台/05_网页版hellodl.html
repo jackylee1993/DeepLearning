@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>实验台⑤ 网页版 Hello Deep Learning</title>
+<style>
+  :root { --navy:#1B3A6B; --blue:#2F6FD6; --pale:#ECF3FC; --ink:#22324A; --mute:#76869F; --orange:#D97724; --green:#2E7D52; --red:#B8413A; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei",sans-serif; background:#f4f6f9; color:var(--ink); padding:18px; }
+  .head { max-width:1080px; margin:0 auto 14px; background:var(--navy); border-radius:10px; padding:14px 22px; color:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .head h1 { font-size:19px; } .head span { font-size:12.5px; color:#8FB4E8; }
+  .wrap { max-width:1080px; margin:0 auto; display:flex; gap:14px; }
+  .panel { width:280px; background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  .stage { flex:1; background:#fff; border-radius:10px; padding:14px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  canvas { display:block; border-radius:8px; background:#FAFBFD; border:1px solid #D9E4F2; max-width:100%; }
+  h3 { font-size:13.5px; color:var(--navy); margin:10px 0 8px; border-left:3px solid var(--blue); padding-left:8px; }
+  label { font-size:12.5px; display:flex; justify-content:space-between; margin:6px 0 2px; }
+  label b { color:var(--blue); }
+  input[type=range] { width:100%; accent-color:var(--blue); }
+  button { border:none; border-radius:7px; padding:8px 0; font-size:13px; cursor:pointer; width:100%; margin-top:6px; font-family:inherit; }
+  .b-main { background:var(--blue); color:#fff; } .b-main:hover { background:#2459B0; }
+  .b-ghost { background:var(--pale); color:var(--navy); } .b-ghost:hover { background:#DCE9FA; }
+  .b-red { background:#FBEAE9; color:var(--red); }
+  .stats { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .chip { background:var(--pale); border-radius:6px; padding:5px 9px; font-size:11.5px; color:var(--navy); }
+  .chip b { color:var(--blue); }
+  .tip { max-width:1080px; margin:12px auto 0; background:#FFF9EC; border:1px dashed #EAB308; border-radius:8px; padding:10px 16px; font-size:12.5px; color:#713F12; }
+  .pred { display:flex; gap:8px; margin-top:10px; }
+  .pc { flex:1; background:var(--pale); border-radius:8px; padding:8px; text-align:center; font-size:12px; }
+  .pc b { display:block; font-size:16px; color:var(--navy); margin-top:2px; }
+  .pc.ok b { color:var(--green); } .pc.bad b { color:var(--red); }
+</style>
+</head>
+<body>
+<div class="head"><h1>实验台⑤ · 网页版 Hello Deep Learning</h1><span>知识点：训练循环 · 前向/损失/反向/更新 · 学习率</span></div>
+<div class="wrap">
+  <div class="panel">
+    <h3>参数（与 PPT p.84 代码一致）</h3>
+    <label>学习率 η <b id="lrV">0.10</b></label>
+    <input type="range" id="lr" min="0.005" max="1" step="0.005" value="0.1" oninput="lrV.textContent=(+this.value).toFixed(3); LR=+this.value">
+    <h3>控制</h3>
+    <button class="b-main" id="play" onclick="togglePlay()">▶ 开始训练</button>
+    <button class="b-ghost" onclick="stepEpoch()">单步 ×50轮</button>
+    <button class="b-red" onclick="reset()">重置</button>
+    <div class="stats">
+      <span class="chip">轮次 <b id="ep">0</b></span>
+      <span class="chip">loss <b id="loss">-</b></span>
+      <span class="chip">状态 <b id="st">就绪</b></span>
+    </div>
+    <h3>四个样本的预测</h3>
+    <div class="pred" id="preds"></div>
+  </div>
+  <div class="stage"><canvas id="cv" width="700" height="540"></canvas></div>
+</div>
+<div class="tip"><b>课堂玩法：</b>① 点"开始训练"，看左侧虚线（决策线）把四个点分开、右侧 loss 曲线一路下降——"学习"在发生；② 把 η 拖到 0.8 再训练，看 loss 曲线震荡；③ 对应 PPT p.84-85：这 10 行代码里的每一行，都在这个页面里"活"起来了。</div>
+<script>
+var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+var W=cv.width,H=cv.height;
+var X0=1.2; // 左侧画布占 40%，右侧画 loss
+var LW=W*0.42, RW=W-LW-30;
+var pts=[[0,0],[0,1],[1,0],[1,1]], ys=[0,1,1,1];
+var w1=1.0,w2=1.0,b=-0.4,LR=0.1,epoch=0,lossHist=[],timer=null;
+var PADL=32,PADR=14,PADT=46,PADB=34;
+function px(x){return PADL+x/1.15*(LW-PADL-PADR)}
+function py(y){return PADT+(1-y)/1.15*(H-PADT-PADB)}
+function fwd(x,y){return w1*x+w2*y+b}
+function lossAll(){var s=0;for(var i=0;i<4;i++){var e=fwd(pts[i][0],pts[i][1])-ys[i];s+=e*e}return s/4}
+function stepEpoch(){
+  var g1=0,g2=0,gb=0;
+  for(var i=0;i<4;i++){var x=pts[i][0],y=pts[i][1];var e=fwd(x,y)-ys[i];g1+=2*e*x;g2+=2*e*y;gb+=2*e}
+  g1/=4;g2/=4;gb/=4;
+  w1-=LR*g1;w2-=LR*g2;b-=LR*gb;epoch+=50;
+  lossHist.push({e:epoch,l:lossAll()});
+  document.getElementById('ep').textContent=epoch;
+  document.getElementById('loss').textContent=lossAll().toFixed(4);
+  renderPreds();draw();
+  if(lossAll()<1e-4){st('收敛 ✓');stop()}}
+function reset(){w1=1.0;w2=1.0;b=-0.4;epoch=0;lossHist=[];stop();st('就绪');renderPreds();draw()}
+function st(t){document.getElementById('st').textContent=t}
+function togglePlay(){timer?stop():start()}
+function start(){if(timer)return;document.getElementById('play').textContent='⏸ 暂停';timer=setInterval(stepEpoch,160)}
+function stop(){if(timer){clearInterval(timer);timer=null}document.getElementById('play').textContent='▶ 开始训练'}
+function renderPreds(){var box=document.getElementById('preds');box.innerHTML='';
+  for(var i=0;i<4;i++){var v=fwd(pts[i][0],pts[i][1]);var d=document.createElement('div');d.className='pc '+(Math.abs(v-ys[i])<0.5?'ok':'bad');
+    d.innerHTML='('+pts[i][0]+','+pts[i][1]+')<b>'+v.toFixed(2)+'</b>'+(v>0.5?'→1':'→0');box.appendChild(d)}}
+function draw(){ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle='#E3EAF3';ctx.strokeRect(0,0,LW,H);
+  // 决策线 w1*x+w2*y+b=0 → y=-(w1*x+b)/w2（延伸到画布左右边界，保证始终可见）
+  ctx.save();
+  ctx.beginPath();ctx.rect(0,0,LW,H);ctx.clip();
+  ctx.strokeStyle='#2F6FD6';ctx.lineWidth=3;ctx.setLineDash([8,5]);ctx.beginPath();
+  var xA=-0.3,xB=1.45;
+  var yA=-(w1*xA+b)/w2,yB=-(w1*xB+b)/w2;
+  ctx.moveTo(px(xA),py(yA));ctx.lineTo(px(xB),py(yB));ctx.stroke();
+  ctx.setLineDash([]);ctx.restore();
+  // 决策线标签（画布内固定位置）
+  ctx.fillStyle='#2F6FD6';ctx.font='bold 12px sans-serif';
+  ctx.fillText('决策线',14,30);
+  // 点
+  for(var i=0;i<4;i++){var x=pts[i][0],y=pts[i][1];var v=fwd(x,y);
+    ctx.beginPath();ctx.arc(px(x),py(y),13,0,7);ctx.fillStyle=ys[i]===1?'#2F6FD6':'#D97724';ctx.fill();
+    ctx.strokeStyle=v>0.5?'#2E7D52':'#B8413A';ctx.lineWidth=3;ctx.stroke();ctx.lineWidth=1;
+    ctx.fillStyle='#fff';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(''+(v>0.5?'1':'0'),px(x),py(y)+3);ctx.textAlign='left';}
+  ctx.fillStyle='#76869F';ctx.font='12px sans-serif';ctx.fillText('蓝=答案1 橙=答案0 · 圈色=预测',10,16);
+  // 右侧 loss 曲线
+  var rx=LW+30,ry=H-30,rh=H-60;
+  ctx.strokeStyle='#E3EAF3';ctx.strokeRect(rx,20,RW,rh);
+  ctx.fillStyle='#76869F';ctx.font='12px sans-serif';ctx.fillText('loss 曲线（越低越好）',rx+10,36);
+  if(lossHist.length>1){var maxL=Math.max(1,lossHist[0].l);
+    ctx.strokeStyle='#D97724';ctx.lineWidth=2;ctx.beginPath();
+    var maxE=Math.max(1000,lossHist[lossHist.length-1].e);
+    for(var j=0;j<lossHist.length;j++){var xx=rx+(lossHist[j].e/maxE)*(RW-20);var yy=ry-lossHist[j].l/maxL*rh;
+      if(j===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);}
+    ctx.stroke();
+    ctx.fillStyle='#76869F';ctx.font='11px sans-serif';ctx.fillText('loss='+lossHist[lossHist.length-1].l.toFixed(4),rx+10,ry-10);}
+  ctx.fillStyle='#76869F';ctx.font='12px sans-serif';ctx.fillText('轮次 →',rx+RW-60,ry+14);}
+cv.addEventListener('click',function(){
+  document.getElementById('st').textContent='点击画布不会加点——本实验台是固定4个OR样本，请用左侧按钮训练';
+  setTimeout(function(){document.getElementById('st').textContent=epoch>0?'训练中':'就绪'},2000);
+});
+reset();
+</script>
+</body>
+</html>

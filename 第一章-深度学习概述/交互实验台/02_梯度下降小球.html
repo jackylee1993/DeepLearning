@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>实验台② 梯度下降小球</title>
+<style>
+  :root { --navy:#1B3A6B; --blue:#2F6FD6; --pale:#ECF3FC; --ink:#22324A; --mute:#76869F; --orange:#D97724; --green:#2E7D52; --red:#B8413A; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei",sans-serif; background:#f4f6f9; color:var(--ink); padding:18px; }
+  .head { max-width:1060px; margin:0 auto 14px; background:var(--navy); border-radius:10px; padding:14px 22px; color:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .head h1 { font-size:19px; } .head span { font-size:12.5px; color:#8FB4E8; }
+  .wrap { max-width:1060px; margin:0 auto; display:flex; gap:14px; }
+  .panel { width:300px; background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  .stage { flex:1; background:#fff; border-radius:10px; padding:14px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  canvas { display:block; border-radius:8px; background:#FAFBFD; border:1px solid #D9E4F2; max-width:100%; }
+  h3 { font-size:13.5px; color:var(--navy); margin:10px 0 8px; border-left:3px solid var(--blue); padding-left:8px; }
+  label { font-size:12.5px; display:flex; justify-content:space-between; margin:6px 0 2px; }
+  label b { color:var(--blue); }
+  input[type=range] { width:100%; accent-color:var(--blue); }
+  button { border:none; border-radius:7px; padding:8px 0; font-size:13px; cursor:pointer; width:100%; margin-top:6px; font-family:inherit; }
+  .b-main { background:var(--blue); color:#fff; } .b-main:hover { background:#2459B0; }
+  .b-ghost { background:var(--pale); color:var(--navy); } .b-ghost:hover { background:#DCE9FA; }
+  .b-red { background:#FBEAE9; color:var(--red); }
+  .stats { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .chip { background:var(--pale); border-radius:6px; padding:5px 9px; font-size:11.5px; color:var(--navy); }
+  .chip b { color:var(--blue); }
+  .tip { max-width:1060px; margin:12px auto 0; background:#FFF9EC; border:1px dashed #EAB308; border-radius:8px; padding:10px 16px; font-size:12.5px; color:#713F12; }
+  .zones { display:flex; gap:6px; margin-top:8px; }
+  .zone { flex:1; text-align:center; font-size:11px; border-radius:6px; padding:5px 2px; }
+  .z-slow { background:#ECF3FC; color:var(--blue); } .z-good { background:#E8F7EE; color:var(--green); } .z-big { background:#FBEAE9; color:var(--red); }
+</style>
+</head>
+<body>
+<div class="head"><h1>实验台② · 梯度下降小球</h1><span>知识点：梯度下降 · 学习率 · 收敛与震荡</span></div>
+<div class="wrap">
+  <div class="panel">
+    <h3>参数</h3>
+    <label>学习率 η <b id="lrV">0.10</b></label>
+    <input type="range" id="lr" min="0.005" max="1.5" step="0.005" value="0.1" oninput="lrV.textContent=(+this.value).toFixed(3); LR=+this.value">
+    <label>起点位置 <b id="x0V">7.50</b></label>
+    <input type="range" id="x0" min="-2" max="7.5" step="0.1" value="7.5" oninput="x0V.textContent=(+this.value).toFixed(1)">
+    <h3>控制</h3>
+    <button class="b-main" id="play" onclick="togglePlay()">▶ 自动下山</button>
+    <button class="b-ghost" onclick="stepOnce()">单步下山 ×1</button>
+    <button class="b-red" onclick="reset()">重置（回到起点）</button>
+    <div class="stats">
+      <span class="chip">位置 x <b id="xp">-</b></span>
+      <span class="chip">损失 L <b id="lp">-</b></span>
+      <span class="chip">步数 <b id="sp">0</b></span>
+      <span class="chip">状态 <b id="st">就绪</b></span>
+    </div>
+    <h3>学习率三档参考</h3>
+    <div class="zones">
+      <div class="zone z-slow">η 小<br>慢但稳</div>
+      <div class="zone z-good">η 合适<br>又快又稳</div>
+      <div class="zone z-big">η 大<br>震荡/发散</div>
+    </div>
+  </div>
+  <div class="stage"><canvas id="cv" width="700" height="540"></canvas></div>
+</div>
+<div class="tip"><b>课堂玩法：</b>① 默认 η=0.1 自动下山，看小球沿曲线滚向谷底；② 把 η 拖到 0.005——"米粒步"半天走不到；③ 拖到 1.2——小球在谷底两侧来回蹦甚至"飞出屏幕"（发散）。对应 PPT：第一章 p.85（学习=下山直觉）。第二章 p.47 再讨论学习率的数学。</div>
+<script>
+var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+var W=cv.width,H=cv.height;
+var XMIN=-2.5,XMAX=8.5, YMIN=-2.5, YMAX=5.5;
+function px(x){return (x-XMIN)/(XMAX-XMIN)*W}
+function py(y){return H-(y-YMIN)/(YMAX-YMIN)*H}
+function f(x){return 0.22*(x-3)*(x-3)+0.5*Math.sin(1.8*x)}
+function df(x){return 0.44*(x-3)+0.9*Math.cos(1.8*x)}
+var LR=0.1, x=7.5, trail=[], steps=0, timer=null, diverge=false;
+function syncStats(){document.getElementById('xp').textContent=x.toFixed(2);
+  document.getElementById('lp').textContent=f(x).toFixed(3);
+  document.getElementById('sp').textContent=steps;}
+function reset(){x=+document.getElementById('x0').value;trail=[x];steps=0;diverge=false;stop();st('就绪');syncStats();draw()}
+function st(t){document.getElementById('st').textContent=t}
+function stepOnce(){
+  var g=df(x); x=x-LR*g; steps++;
+  if(Math.abs(x)>14){x=14*Math.sign(x);diverge=true;st('发散！步子太大');stop();}
+  trail.push(x); if(trail.length>60)trail.shift();
+  syncStats();
+  draw();}
+function togglePlay(){timer?stop():start()}
+function start(){if(timer)return;document.getElementById('play').textContent='⏸ 暂停';timer=setInterval(function(){if(!diverge)stepOnce()},120)}
+function stop(){if(timer){clearInterval(timer);timer=null}document.getElementById('play').textContent='▶ 自动下山'}
+function draw(){ctx.clearRect(0,0,W,H);
+  // 网格
+  ctx.strokeStyle='#E3EAF3';for(var gx=Math.ceil(XMIN);gx<=XMAX;gx++){ctx.beginPath();ctx.moveTo(px(gx),0);ctx.lineTo(px(gx),H);ctx.stroke()}
+  for(var gy=Math.ceil(YMIN);gy<=YMAX;gy++){ctx.beginPath();ctx.moveTo(0,py(gy));ctx.lineTo(W,py(gy));ctx.stroke()}
+  // 损失曲线
+  ctx.strokeStyle='#2F6FD6';ctx.lineWidth=2.5;ctx.beginPath();
+  for(var i=0;i<=300;i++){var xx=XMIN+(XMAX-XMIN)*i/300;var yy=f(xx);if(i===0)ctx.moveTo(px(xx),py(yy));else ctx.lineTo(px(xx),py(yy));}
+  ctx.stroke();
+  // 谷底标记
+  ctx.fillStyle='#2E7D52';ctx.font='13px sans-serif';ctx.fillText('谷底（希望到达的地方）',px(2.8),py(f(2.8))+26);
+  // 轨迹
+  for(var j=0;j<trail.length;j++){var a=j/trail.length;ctx.beginPath();ctx.arc(px(trail[j]),py(f(trail[j])),3,0,7);ctx.fillStyle='rgba(217,119,36,'+(0.15+0.85*a)+')';ctx.fill()}
+  // 小球
+  var bx=px(x),by=py(f(x));
+  ctx.beginPath();ctx.arc(bx,by,11,0,7);ctx.fillStyle=diverge?'#B8413A':'#D97724';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2.5;ctx.stroke();
+  // 梯度箭头
+  var g=df(x),gl=Math.hypot(1,g);
+  if(!diverge&&isFinite(g)){var ax=bx+18/gl,ay=by+18*g/gl;ctx.strokeStyle='#B8413A';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(ax,ay);ctx.stroke()}
+  ctx.fillStyle='#76869F';ctx.font='12px sans-serif';ctx.fillText('损失函数 L(x)（山坡）',12,20);}
+reset();
+</script>
+</body>
+</html>
