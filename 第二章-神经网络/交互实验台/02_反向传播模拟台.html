@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>实验台② 反向传播数值模拟台</title>
+<style>
+  :root { --navy:#1B3A6B; --blue:#2F6FD6; --pale:#ECF3FC; --ink:#22324A; --mute:#76869F; --orange:#D97724; --green:#2E7D52; --red:#B8413A; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei",sans-serif; background:#f4f6f9; color:var(--ink); padding:18px; }
+  .head { max-width:1080px; margin:0 auto 14px; background:var(--navy); border-radius:10px; padding:14px 22px; color:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .head h1 { font-size:19px; } .head span { font-size:12.5px; color:#8FB4E8; }
+  .wrap { max-width:1080px; margin:0 auto; display:flex; gap:14px; }
+  .panel { width:300px; background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  .stage { flex:1; background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  h3 { font-size:13.5px; color:var(--navy); margin:10px 0 8px; border-left:3px solid var(--blue); padding-left:8px; }
+  h3:first-child { margin-top:0; }
+  label { font-size:12.5px; display:flex; justify-content:space-between; margin:6px 0 2px; }
+  label b { color:var(--blue); }
+  input[type=range] { width:100%; accent-color:var(--blue); }
+  button { border:none; border-radius:7px; padding:8px 0; font-size:13px; cursor:pointer; width:100%; margin-top:6px; font-family:inherit; }
+  .b-main { background:var(--blue); color:#fff; } .b-main:hover { background:#2459B0; }
+  .b-ghost { background:var(--pale); color:var(--navy); } .b-ghost:hover { background:#DCE9FA; }
+  .b-red { background:#FBEAE9; color:var(--red); }
+  .stats { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .chip { background:var(--pale); border-radius:6px; padding:5px 9px; font-size:11.5px; color:var(--navy); }
+  .chip b { color:var(--blue); }
+  .net { display:flex; align-items:center; justify-content:space-around; padding:10px; background:#FAFBFD; border:1px solid #D9E4F2; border-radius:8px; margin-bottom:12px; }
+  .nnode { text-align:center; }
+  .ncircle { width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px; margin:0 auto 4px; }
+  .nlabel { font-size:10.5px; color:var(--mute); }
+  .narrow { font-size:18px; color:var(--mute); font-weight:bold; }
+  .narrow.red { color:var(--red); }
+  .step-detail { background:var(--pale); border-radius:8px; padding:10px 14px; font-size:12.5px; line-height:1.8; }
+  .step-detail b { color:var(--navy); }
+  .eq { background:var(--navy); color:#fff; border-radius:8px; padding:9px 12px; font-size:12.5px; text-align:center; font-family:Consolas,monospace; margin-bottom:10px; }
+  .log { max-height:180px; overflow-y:auto; margin-top:8px; font-family:Consolas,monospace; font-size:11.5px; color:var(--mute); background:#FAFBFD; border:1px solid #D9E4F2; border-radius:6px; padding:8px 10px; }
+  .tip { max-width:1080px; margin:12px auto 0; background:#FFF9EC; border:1px dashed #EAB308; border-radius:8px; padding:10px 16px; font-size:12.5px; color:#713F12; }
+  @media (max-width:720px){ .wrap{flex-direction:column;} }
+</style>
+</head>
+<body>
+<div class="head"><h1>实验台② · 反向传播数值模拟台</h1><span>知识点：前向传播 · 链式法则 · 误差倒传 · 参数更新</span></div>
+<div class="wrap">
+  <div class="panel">
+    <h3>网络参数</h3>
+    <label>权重 w <b id="wV">1.00</b></label>
+    <input type="range" id="w" min="-3" max="3" step="0.05" value="1" oninput="wV.textContent=(+this.value).toFixed(2); resetNet()">
+    <label>偏置 b <b id="bV">0.00</b></label>
+    <input type="range" id="b" min="-2" max="2" step="0.05" value="0" oninput="bV.textContent=(+this.value).toFixed(2); resetNet()">
+    <label>学习率 η <b id="lrV">0.10</b></label>
+    <input type="range" id="lr" min="0.01" max="0.8" step="0.01" value="0.1" oninput="lrV.textContent=(+this.value).toFixed(2); LR=+this.value">
+    <h3>控制</h3>
+    <button class="b-main" id="play" onclick="togglePlay()">▶ 自动训练</button>
+    <button class="b-ghost" onclick="stepOnce()">单步（一次前向+反向+更新）</button>
+    <button class="b-red" onclick="resetNet()">重置</button>
+    <div class="stats">
+      <span class="chip">步数 <b id="sp">0</b></span>
+      <span class="chip">loss <b id="lp">-</b></span>
+      <span class="chip">w <b id="wv2">1.00</b></span>
+      <span class="chip">状态 <b id="st">就绪</b></span>
+    </div>
+    <div class="eq">L = (w·x + b − y)² &nbsp; &nbsp; ∂L/∂w = 2(w·x+b−y)·x</div>
+    <h3>前向/反向数值</h3>
+    <div class="step-detail" id="detail">点击"单步"开始</div>
+  </div>
+  <div class="stage">
+    <h3>网络计算图</h3>
+    <div class="net" id="netviz"></div>
+    <h3>loss 下降曲线</h3>
+    <canvas id="cv" width="720" height="220"></canvas>
+    <div class="log" id="log">等待开始…</div>
+  </div>
+</div>
+<div class="tip"><b>课堂玩法：</b>① 点"自动训练"，看 loss 一路下降、网络图里数值实时变化；② 关注"反向"环节：误差从输出倒传，每个参数收到自己的梯度；③ 把 η 调大（0.5+）再训练，看 loss 震荡——学习率过大的直观演示；④ 对应课件「反向传播算法（完整版）：四步走」页。</div>
+<script>
+var x=1, y=2;  // 固定样本
+var w=1, b=0, LR=0.1, step=0, timer=null, logLines=0;
+var lossHist=[];
+function fwd(){return w*x+b}
+function loss(){var a=fwd();return (a-y)*(a-y)}
+function drawNet(wv,bv,gradW,gradB,phase){
+  var el=document.getElementById('netviz');el.innerHTML='';
+  function node(label,val,color,extra){
+    return '<div class="nnode"><div class="ncircle" style="background:'+(color||'#ECF3FC')+';color:'+(color==='#1B3A6B'?'#fff':'#22324A')+'">'+val+'</div><div class="nlabel">'+label+'</div>'+(extra||'')+'</div>';
+  }
+  var a=wv*x+bv;                 // 用本步的 w、b 计算（保证与 z 一致）
+  var html='';
+  html+=node('输入 x',x,'#ECF3FC');
+  html+='<div class="narrow'+(phase==='back'?' red':'')+'">'+(phase==='back'?'∂z/∂w = x':'× w = '+wv)+'</div>';
+  html+=node('加权 z = wx+b',(wv*x+bv).toFixed(2),'#ECF3FC');
+  html+='<div class="narrow'+(phase==='back'?' red':'')+'">'+(phase==='back'?'∂a/∂z = 1':'+ b = '+bv)+'</div>';
+  html+=node('输出 a = z',a.toFixed(2),'#ECF3FC');
+  html+='<div class="narrow'+(phase==='back'?' red':'')+'">'+(phase==='back'?'∂L/∂a = 2(a−y)':'对比 y='+y)+'</div>';
+  html+=node('目标 y',y,'#D97724');
+  el.innerHTML=html;
+  if(phase==='back'&&gradW!==null){
+    el.title='∂L/∂w = '+gradW.toFixed(3)+'   ∂L/∂b = '+gradB.toFixed(3);   // 悬停可看梯度
+  }
+}
+function stepOnce(){
+  var a=fwd();
+  var L=loss();
+  var dLda=2*(a-y);       // 输出端梯度
+  var dLdz=dLda;          // 线性激活，∂a/∂z=1
+  var dLdw=dLdz*x;        // 链式：∂L/∂w = ∂L/∂z · ∂z/∂w
+  var dLdb=dLdz*1;
+  // 更新
+  var oldW=w, oldB=b;
+  w=w-LR*dLdw; b=b-LR*dLdb;
+  step++;
+  lossHist.push({s:step,l:L});
+  document.getElementById('sp').textContent=step;
+  document.getElementById('lp').textContent=L.toFixed(4);
+  document.getElementById('wv2').textContent=w.toFixed(3);
+  drawNet(oldW,oldB,dLdw,dLdb,'back');
+  document.getElementById('detail').innerHTML=
+    '<b>前向：</b>a = '+oldW.toFixed(2)+'×'+x+' + '+oldB.toFixed(2)+' = '+a.toFixed(2)+'，L = ('+a.toFixed(2)+'−'+y+')² = '+L.toFixed(4)+'<br>'+
+    '<b>反向：</b>∂L/∂a = 2('+a.toFixed(2)+'−'+y+') = '+dLda.toFixed(2)+'<br>'+
+    '∂L/∂w = ∂L/∂a × ∂a/∂z × ∂z/∂w = '+dLda.toFixed(2)+' × 1 × '+x+' = <b style="color:var(--red)">'+dLdw.toFixed(2)+'</b><br>'+
+    '<b>更新：</b>w ← '+oldW.toFixed(2)+' − '+LR.toFixed(2)+'×'+dLdw.toFixed(2)+' = <b style="color:var(--green)">'+w.toFixed(3)+'</b>';
+  var lg=document.getElementById('log');
+  var line='步'+step+': a='+a.toFixed(3)+' L='+L.toFixed(4)+' ∂L/∂w='+dLdw.toFixed(3)+' w:'+oldW.toFixed(3)+'→'+w.toFixed(3);
+  lg.innerHTML=line+'\n'+lg.innerHTML;
+  logLines++; if(logLines>8){lg.innerHTML=lg.innerHTML.split('\n').slice(0,8).join('\n');}
+  drawLoss();
+  if(L<1e-6){st('收敛 ✓');stop();}
+}
+function drawLoss(){
+  var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.strokeStyle='#E3EAF3';ctx.strokeRect(0,0,cv.width,cv.height);
+  if(lossHist.length<2){ctx.fillStyle='#76869F';ctx.font='12px sans-serif';ctx.fillText('loss 曲线将在这里实时绘制…',20,30);return;}
+  var maxL=Math.max(1,lossHist[0].l), maxS=Math.max(30,lossHist[lossHist.length-1].s);
+  ctx.strokeStyle='#D97724';ctx.lineWidth=2;ctx.beginPath();
+  for(var i=0;i<lossHist.length;i++){
+    var px=10+lossHist[i].s/maxS*(cv.width-20);
+    var py=cv.height-15-lossHist[i].l/maxL*(cv.height-40);
+    if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+  ctx.fillStyle='#76869F';ctx.font='11px sans-serif';
+  ctx.fillText('loss='+lossHist[lossHist.length-1].l.toFixed(4)+'  (步'+lossHist[lossHist.length-1].s+')',10,cv.height-4);
+}
+function st(t){var e=document.getElementById('st');if(e)e.textContent=t}
+function togglePlay(){timer?stop():start()}
+function start(){if(timer)return;document.getElementById('play').textContent='⏸ 暂停';timer=setInterval(stepOnce,450)}
+function stop(){if(timer){clearInterval(timer);timer=null}document.getElementById('play').textContent='▶ 自动训练'}
+function resetNet(){w=+document.getElementById('w').value;b=+document.getElementById('b').value;step=0;lossHist=[];logLines=0;st('就绪');stop();
+  document.getElementById('sp').textContent=0;document.getElementById('lp').textContent='-';
+  document.getElementById('wv2').textContent=w.toFixed(2);
+  document.getElementById('log').innerHTML='已重置';
+  document.getElementById('detail').innerHTML='点击"单步"开始';
+  drawNet(w,b,null,null,'fwd');drawLoss();}
+resetNet();
+</script>
+</body>
+</html>

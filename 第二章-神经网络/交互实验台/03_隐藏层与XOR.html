@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>实验台③ 隐藏层与 XOR</title>
+<style>
+  :root { --navy:#1B3A6B; --blue:#2F6FD6; --pale:#ECF3FC; --ink:#22324A; --mute:#76869F; --orange:#D97724; --green:#2E7D52; --red:#B8413A; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei",sans-serif; background:#f4f6f9; color:var(--ink); padding:18px; }
+  .head { max-width:1180px; margin:0 auto 14px; background:var(--navy); border-radius:10px; padding:14px 22px; color:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .head h1 { font-size:19px; } .head span { font-size:12.5px; color:#8FB4E8; }
+  .wrap { max-width:1180px; margin:0 auto; display:flex; gap:14px; }
+  .panel { width:260px; background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  .stage { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .canvas-box { background:#fff; border-radius:10px; padding:12px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  .canvas-box h4 { font-size:13px; color:var(--navy); margin-bottom:6px; border-left:3px solid var(--orange); padding-left:8px; }
+  canvas { display:block; border-radius:8px; background:#FAFBFD; border:1px solid #D9E4F2; max-width:100%; }
+  h3 { font-size:13.5px; color:var(--navy); margin:10px 0 8px; border-left:3px solid var(--blue); padding-left:8px; }
+  h3:first-child { margin-top:0; }
+  button { border:none; border-radius:7px; padding:8px 0; font-size:13px; cursor:pointer; width:100%; margin-top:6px; font-family:inherit; }
+  .b-main { background:var(--blue); color:#fff; } .b-main:hover { background:#2459B0; }
+  .b-ghost { background:var(--pale); color:var(--navy); } .b-ghost:hover { background:#DCE9FA; }
+  .b-red { background:#FBEAE9; color:var(--red); }
+  .stats { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .chip { background:var(--pale); border-radius:6px; padding:5px 9px; font-size:11.5px; color:var(--navy); }
+  .chip b { color:var(--blue); }
+  .legend { font-size:11.5px; color:var(--mute); margin-top:6px; line-height:1.7; }
+  .dotb,.doto { display:inline-block; width:10px; height:10px; border-radius:50%; margin:0 2px -1px 4px; }
+  .dotb{background:var(--blue);} .doto{background:var(--orange);}
+  .tip { max-width:1180px; margin:12px auto 0; background:#FFF9EC; border:1px dashed #EAB308; border-radius:8px; padding:10px 16px; font-size:12.5px; color:#713F12; }
+  .weights { margin-top:10px; font-size:12px; font-family:Consolas,monospace; color:var(--mute); background:var(--pale); border-radius:6px; padding:8px 10px; line-height:1.8; }
+  .weights b { color:var(--navy); }
+  @media (max-width:900px){ .wrap{flex-direction:column;} .stage{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="head"><h1>实验台③ · 隐藏层与 XOR：把"切不开"揉成"切得开"</h1><span>知识点：FFN 隐藏层 · 空间变换 · 特征重表达 · XOR 的答案</span></div>
+<div class="wrap">
+  <div class="panel">
+    <h3>控制</h3>
+    <button class="b-main" id="play" onclick="togglePlay()">▶ 自动训练（BP 调隐藏层）</button>
+    <button class="b-ghost" onclick="stepOnce()">单步训练 ×1</button>
+    <button class="b-red" onclick="resetNet()">重置</button>
+    <div class="stats">
+      <span class="chip">步数 <b id="sp">0</b></span>
+      <span class="chip">loss <b id="lp">-</b></span>
+      <span class="chip">准确率 <b id="acc">-</b></span>
+      <span class="chip">状态 <b id="st">就绪</b></span>
+    </div>
+    <div class="weights" id="wts">隐藏层权重等待训练…</div>
+    <h3>看什么</h3>
+    <div class="legend">
+      左图：原始 XOR 空间，<span class="dotb"></span>蓝点与<span class="doto"></span>橙点，单层永远切不开。
+      <br>右图：隐藏层把每个点变换到新坐标 (h₁,h₂)——注意训练中点的位置在"移动"。
+      <br>当右图能被一条竖线分开时，XOR 就解决了。
+    </div>
+  </div>
+  <div class="stage">
+    <div class="canvas-box"><h4>原始空间（输入 x₁, x₂）· 单层 FFN 的视角</h4><canvas id="cv1" width="420" height="420"></canvas></div>
+    <div class="canvas-box"><h4>隐藏层变换后的空间（h₁, h₂）· 两层 FFN 的视角</h4><canvas id="cv2" width="420" height="420"></canvas></div>
+  </div>
+</div>
+<div class="tip"><b>课堂玩法：</b>① 先看左图：XOR 四个点，一条直线无论怎么摆都切不开（这就是单层 FFN 的天花板）；② 点"自动训练"，看右侧隐藏层空间里的四个点开始"移动"——网络在自动学习怎么把数据揉开；③ 训练完成后，右图一条竖线轻松分开两类，XOR 被两层 FFN 解决。对应课件：课时一"隐藏层的答案"页。</div>
+<script>
+var cv1=document.getElementById('cv1'),ctx1=cv1.getContext('2d');
+var cv2=document.getElementById('cv2'),ctx2=cv2.getContext('2d');
+var S=cv1.width,PAD=55;
+// XOR 数据
+var pts=[[0,0],[0,1],[1,0],[1,1]];
+var tgt=[0,1,1,0]; // 异或标签
+// 2-2-1 网络：W1(2x2), b1(2), W2(2), b2
+var W1=[[0.5,0.5],[0.5,-0.5]], b1=[0,0], W2=[1,-1], b2=0;
+var LR=0.6, step=0, timer=null, running=false;
+function sig(x){return 1/(1+Math.exp(-x))}
+function fwd(x1,x2){
+  var h1=sig(W1[0][0]*x1+W1[0][1]*x2+b1[0]);
+  var h2=sig(W1[1][0]*x1+W1[1][1]*x2+b1[1]);
+  var y=sig(W2[0]*h1+W2[1]*h2+b2);
+  return {h1:h1,h2:h2,y:y};
+}
+function PX(x){return PAD+x*(S-2*PAD)}
+function PY(y){return S-PAD-y*(S-2*PAD)}
+function lossAll(){
+  var s=0;
+  for(var i=0;i<4;i++){var r=fwd(pts[i][0],pts[i][1]);s+=(r.y-tgt[i])*(r.y-tgt[i]);}
+  return s/4;
+}
+function stepOnce(){
+  // 反向传播（手写梯度）
+  var gW1=[[0,0],[0,0]], gb1=[0,0], gW2=[0,0], gb2=0;
+  for(var i=0;i<4;i++){
+    var x1=pts[i][0],x2=pts[i][1],t=tgt[i];
+    var r=fwd(x1,x2);
+    var dy=2*(r.y-t);          // dL/dy
+    var dz=dy*r.y*(1-r.y);     // dL/dz(out)
+    gW2[0]+=dz*r.h1; gW2[1]+=dz*r.h2; gb2+=dz;
+    // 传到隐藏层
+    var dh1=dz*W2[0]*r.h1*(1-r.h1);
+    var dh2=dz*W2[1]*r.h2*(1-r.h2);
+    gW1[0][0]+=dh1*x1; gW1[0][1]+=dh1*x2; gb1[0]+=dh1;
+    gW1[1][0]+=dh2*x1; gW1[1][1]+=dh2*x2; gb1[1]+=dh2;
+  }
+  // 更新
+  var n=4;
+  W1[0][0]-=LR*gW1[0][0]/n; W1[0][1]-=LR*gW1[0][1]/n; W1[1][0]-=LR*gW1[1][0]/n; W1[1][1]-=LR*gW1[1][1]/n;
+  b1[0]-=LR*gb1[0]/n; b1[1]-=LR*gb1[1]/n;
+  W2[0]-=LR*gW2[0]/n; W2[1]-=LR*gW2[1]/n; b2-=LR*gb2/n;
+  step++;
+  var L=lossAll();
+  var accN=0;
+  for(var j=0;j<4;j++){var r2=fwd(pts[j][0],pts[j][1]);if((r2.y>0.5?1:0)===tgt[j])accN++;}
+  document.getElementById('sp').textContent=step;
+  document.getElementById('lp').textContent=L.toFixed(4);
+  document.getElementById('acc').textContent=(accN*25)+'%';
+  draw();
+  if(L<0.001){st('收敛 ✓');stop();}
+}
+function draw(){
+  // 左图：原始空间 + 单层决策线（画一条当前 W2 视角的直线，展示切不开）
+  ctx1.clearRect(0,0,S,S);
+  ctx1.strokeStyle='#E3EAF3';ctx1.lineWidth=1;
+  for(var g=0;g<=1;g+=0.25){ctx1.beginPath();ctx1.moveTo(PX(g),PY(0));ctx1.lineTo(PX(g),PY(1));ctx1.stroke();
+    ctx1.beginPath();ctx1.moveTo(PX(0),PY(g));ctx1.lineTo(PX(1),PY(g));ctx1.stroke();}
+  // 尝试画一条"最优直线"（任意方向都切不开，标注说明）
+  ctx1.setLineDash([6,4]);ctx1.strokeStyle='#B8413A';ctx1.lineWidth=2.5;
+  ctx1.beginPath();ctx1.moveTo(PX(0.15),PY(0.15));ctx1.lineTo(PX(0.85),PY(0.85));ctx1.stroke();
+  ctx1.setLineDash([]);
+  ctx1.fillStyle='#B8413A';ctx1.font='bold 12px sans-serif';
+  ctx1.fillText('无论怎么摆直线',PX(0.14),PY(0.9)+18);
+  ctx1.fillText('总有同色点在同侧',PX(0.14),PY(0.9)+34);
+  // 点
+  for(var i=0;i<4;i++){
+    var x=pts[i][0],y=pts[i][1];
+    ctx1.beginPath();ctx1.arc(PX(x),PY(y),14,0,7);
+    ctx1.fillStyle=tgt[i]===1?'#2F6FD6':'#D97724';ctx1.fill();
+    ctx1.strokeStyle='#fff';ctx1.lineWidth=2;ctx1.stroke();
+  }
+  ctx1.fillStyle='#76869F';ctx1.font='11px sans-serif';
+  ctx1.fillText('x₁ →',S-PAD-28,S-12);ctx1.fillText('x₂ ↑',8,20);
+  // 右图：隐藏层变换空间
+  ctx2.clearRect(0,0,S,S);
+  ctx2.strokeStyle='#E3EAF3';ctx2.lineWidth=1;
+  for(var g2=0;g2<=1;g2+=0.25){ctx2.beginPath();ctx2.moveTo(PX(g2),PY(0));ctx2.lineTo(PX(g2),PY(1));ctx2.stroke();
+    ctx2.beginPath();ctx2.moveTo(PX(0),PY(g2));ctx2.lineTo(PX(1),PY(g2));ctx2.stroke();}
+  // 分类线（W2 方向，把 h 空间分成两类）
+  var hpts=[];
+  for(var k=0;k<4;k++){var r=fwd(pts[k][0],pts[k][1]);hpts.push({h1:r.h1,h2:r.h2});}
+  // 决策线：W2[0]*h1+W2[1]*h2+b2=0
+  var ha=0.05, hb=0.95;
+  var w2b = Math.abs(W2[1])<1e-6 ? (W2[1]>=0?1e-6:-1e-6) : W2[1];   // 防止除零
+  var h2a=-(W2[0]*ha+b2)/w2b, h2b=-(W2[0]*hb+b2)/w2b;
+  ctx2.strokeStyle='#1E40AF';ctx2.lineWidth=3;ctx2.setLineDash([7,5]);
+  ctx2.beginPath();
+  ctx2.moveTo(PX(Math.max(0,Math.min(1,ha))),PY(Math.max(0,Math.min(1,h2a))));
+  ctx2.lineTo(PX(Math.max(0,Math.min(1,hb))),PY(Math.max(0,Math.min(1,h2b))));
+  ctx2.stroke();ctx2.setLineDash([]);
+  ctx2.fillStyle='#1E40AF';ctx2.font='bold 12px sans-serif';
+  ctx2.fillText('分类线',PX(0.6),PY(0.12));
+  // 点（移动中！）
+  for(var m=0;m<4;m++){
+    var p=hpts[m];
+    ctx2.beginPath();ctx2.arc(PX(p.h1),PY(p.h2),14,0,7);
+    ctx2.fillStyle=tgt[m]===1?'#2F6FD6':'#D97724';ctx2.fill();
+    ctx2.strokeStyle='#fff';ctx2.lineWidth=2;ctx2.stroke();
+  }
+  ctx2.fillStyle='#76869F';ctx2.font='11px sans-serif';
+  ctx2.fillText('h₁ →',S-PAD-28,S-12);ctx2.fillText('h₂ ↑',8,20);
+  // 权重显示
+  document.getElementById('wts').innerHTML=
+    '<b>隐藏层权重（训练中自动调整）</b><br>'+
+    'W₁ = ['+W1[0][0].toFixed(2)+', '+W1[0][1].toFixed(2)+'; '+W1[1][0].toFixed(2)+', '+W1[1][1].toFixed(2)+']<br>'+
+    'W₂ = ['+W2[0].toFixed(2)+', '+W2[1].toFixed(2)+']  b₂='+b2.toFixed(2);
+}
+function st(t){var e=document.getElementById('st');if(e)e.textContent=t}
+function togglePlay(){running?stop():start()}
+function start(){if(timer)return;document.getElementById('play').textContent='⏸ 暂停';running=true;timer=setInterval(stepOnce,120)}
+function stop(){if(timer){clearInterval(timer);timer=null}running=false;document.getElementById('play').textContent='▶ 自动训练'}
+function resetNet(){
+  W1=[[0.5,0.5],[0.5,-0.5]];b1=[0,0];W2=[1,-1];b2=0;
+  step=0;stop();
+  if(document.getElementById('st'))document.getElementById('st').textContent='就绪';
+  document.getElementById('sp').textContent=0;
+  document.getElementById('lp').textContent='-';
+  document.getElementById('acc').textContent='-';
+  draw();
+}
+resetNet();
+</script>
+</body>
+</html>

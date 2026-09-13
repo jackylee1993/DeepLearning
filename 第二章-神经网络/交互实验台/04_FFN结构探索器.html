@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>实验台④ FFN 结构探索器</title>
+<style>
+  :root { --navy:#1B3A6B; --blue:#2F6FD6; --pale:#ECF3FC; --ink:#22324A; --mute:#76869F; --orange:#D97724; --green:#2E7D52; --red:#B8413A; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei",sans-serif; background:#f4f6f9; color:var(--ink); padding:18px; }
+  .head { max-width:1180px; margin:0 auto 14px; background:var(--navy); border-radius:10px; padding:14px 22px; color:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .head h1 { font-size:19px; } .head span { font-size:12.5px; color:#8FB4E8; }
+  .wrap { max-width:1180px; margin:0 auto; display:flex; gap:14px; }
+  .panel { width:280px; background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  .stage { flex:1; background:#fff; border-radius:10px; padding:14px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  canvas { display:block; border-radius:8px; background:#FAFBFD; border:1px solid #D9E4F2; max-width:100%; }
+  h3 { font-size:13.5px; color:var(--navy); margin:10px 0 8px; border-left:3px solid var(--blue); padding-left:8px; }
+  h3:first-child { margin-top:0; }
+  label { font-size:12.5px; display:flex; justify-content:space-between; margin:6px 0 2px; }
+  label b { color:var(--blue); }
+  input[type=range] { width:100%; accent-color:var(--blue); }
+  button { border:none; border-radius:7px; padding:8px 0; font-size:13px; cursor:pointer; width:100%; margin-top:6px; font-family:inherit; }
+  .b-main { background:var(--blue); color:#fff; } .b-main:hover { background:#2459B0; }
+  .b-ghost { background:var(--pale); color:var(--navy); } .b-ghost:hover { background:#DCE9FA; }
+  .stats { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .chip { background:var(--pale); border-radius:6px; padding:5px 9px; font-size:11.5px; color:var(--navy); }
+  .chip b { color:var(--blue); }
+  .preset { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px; }
+  .preset button { border:none; border-radius:7px; padding:7px 0; font-size:12px; cursor:pointer; background:var(--pale); color:var(--navy); font-family:inherit; }
+  .preset button:hover { background:#DCE9FA; }
+  .legend { font-size:11.5px; color:var(--mute); margin-top:6px; line-height:1.7; }
+  .tip { max-width:1180px; margin:12px auto 0; background:#FFF9EC; border:1px dashed #EAB308; border-radius:8px; padding:10px 16px; font-size:12.5px; color:#713F12; }
+  .fwd-info { margin-top:10px; background:var(--pale); border-radius:8px; padding:10px 14px; font-size:12.5px; font-family:Consolas,monospace; color:var(--ink); line-height:2; }
+  .fwd-info b { color:var(--navy); }
+  @media (max-width:900px){ .wrap{flex-direction:column;} }
+</style>
+</head>
+<body>
+<div class="head"><h1>实验台④ · FFN 结构探索器</h1><span>知识点：FFN 结构 · 层与神经元 · 前向传播 · 复合函数</span></div>
+<div class="wrap">
+  <div class="panel">
+    <h3>网络结构</h3>
+    <label>输入层神经元 <b id="n1V">3</b></label>
+    <input type="range" id="n1" min="2" max="6" step="1" value="3" oninput="n1V.textContent=this.value;rebuild()">
+    <label>隐藏层 1 神经元 <b id="n2V">4</b></label>
+    <input type="range" id="n2" min="0" max="8" step="1" value="4" oninput="n2V.textContent=this.value;rebuild()">
+    <label>隐藏层 2 神经元 <b id="n3V">3</b></label>
+    <input type="range" id="n3" min="0" max="8" step="1" value="3" oninput="n3V.textContent=this.value;rebuild()">
+    <label>输出层神经元 <b id="n4V">2</b></label>
+    <input type="range" id="n4" min="1" max="5" step="1" value="2" oninput="n4V.textContent=this.value;rebuild()">
+    <h3>预设</h3>
+    <div class="preset">
+      <button onclick="pre(3,0,0,2)">单层(感知机)</button>
+      <button onclick="pre(3,4,0,2)">一层隐藏</button>
+      <button onclick="pre(3,6,4,2)">两层隐藏</button>
+      <button onclick="pre(6,8,8,3)">深一点</button>
+    </div>
+    <h3>控制</h3>
+    <button class="b-main" onclick="runFwd()">▶ 前向传播</button>
+    <button class="b-ghost" onclick="randWeights()">随机权重</button>
+    <div class="stats">
+      <span class="chip">总参数 <b id="pc">-</b></span>
+      <span class="chip">层数 <b id="lc">-</b></span>
+    </div>
+    <div class="legend">拖动滑块改网络结构；点"前向传播"看数据逐层流动；观察"感知机=单层"与"FFN=多层"的结构差异。</div>
+  </div>
+  <div class="stage">
+    <canvas id="cv" width="820" height="500"></canvas>
+    <div class="fwd-info" id="fwd">点"前向传播"：数据将从输入层逐层流到输出层，每个神经元的数值实时显示。</div>
+  </div>
+</div>
+<div class="tip"><b>课堂玩法：</b>① 切到"单层(感知机)"预设——输入直接到输出，这就是第一章的感知机；② 切到"两层隐藏"——看看多出来的隐藏层；③ 点"前向传播"，看数据 x 如何被一层层"加工"（加权求和→激活→再加权求和→再激活）；④ 观察总参数数量：结构越深，参数越多——这就是"深度学习"的代价与力量。对应课件：课时一"FFN 的骨架"页。</div>
+<script>
+var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+var W=cv.width,H=cv.height;
+var layers=[3,4,3,2];
+var weights=null; // {li,i,j:val}
+var biases=null;  // {li,j:val}
+var acts=null;    // 前向激活值
+function randWeights(){
+  weights={};biases={};
+  for(var li=0;li<layers.length-1;li++){
+    for(var i=0;i<layers[li];i++){
+      for(var j=0;j<layers[li+1];j++){
+        weights[li+'_'+i+'_'+j]=(Math.random()*2-1)*0.8;
+      }
+    }
+    for(var j2=0;j2<layers[li+1];j2++){biases[li+'_'+j2]=(Math.random()*2-1)*0.3;}
+  }
+  acts=null;
+  document.getElementById('fwd').innerHTML='已随机初始化权重。点"前向传播"看数据流动。';
+  draw();
+}
+function sig(x){return 1/(1+Math.exp(-x))}
+function runFwd(){
+  acts=[];
+  var cur=[];
+  for(var i=0;i<layers[0];i++){cur.push((Math.random()*2-1)*0.8);}
+  acts.push(cur);
+  for(var li=0;li<layers.length-1;li++){
+    var next=[];
+    for(var j=0;j<layers[li+1];j++){
+      var z=biases[li+'_'+j]||0;
+      for(var i=0;i<layers[li];i++){z+=weights[li+'_'+i+'_'+j]*cur[i];}
+      next.push(sig(z));
+    }
+    cur=next;acts.push(cur);
+  }
+  var info='<b>前向传播：数据逐层流动（每个神经元 = 加权求和 → 激活）</b><br>';
+  for(var l=0;l<layers.length;l++){
+    info+='层'+(l+1)+'('+layers[l]+'个): [ '+acts[l].map(function(v){return v.toFixed(2)}).join(', ')+' ]<br>';
+  }
+  document.getElementById('fwd').innerHTML=info;
+  draw();
+}
+function pre(a,b,c,d){
+  document.getElementById('n1').value=a;document.getElementById('n1V').textContent=a;
+  document.getElementById('n2').value=b;document.getElementById('n2V').textContent=b;
+  document.getElementById('n3').value=c;document.getElementById('n3V').textContent=c;
+  document.getElementById('n4').value=d;document.getElementById('n4V').textContent=d;
+  rebuild();
+}
+function rebuild(){
+  layers=[+document.getElementById('n1').value,+document.getElementById('n2').value,+document.getElementById('n3').value,+document.getElementById('n4').value];
+  // 去掉 0 的隐藏层
+  layers=layers.filter(function(n){return n>0});
+  if(layers.length<2)layers=[2,1];
+  randWeights();
+}
+function countParams(){
+  var c=0;
+  for(var li=0;li<layers.length-1;li++){c+=layers[li]*layers[li+1]+layers[li+1];}
+  return c;
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  var maxN=Math.max.apply(null,layers);
+  var lw=W/(layers.length+0.8), top=55, bot=H-70;
+  var pos=[];
+  for(var li=0;li<layers.length;li++){
+    var x=(li+0.4)*lw;
+    var ys=[];
+    var gap=(bot-top)/(layers[li]-1||1);
+    for(var i=0;i<layers[li];i++){
+      ys.push(layers[li]===1?(top+bot)/2:top+i*gap);
+    }
+    pos.push({x:x,ys:ys});
+  }
+  // 连线
+  for(var li2=0;li2<layers.length-1;li2++){
+    for(var i2=0;i2<layers[li2];i2++){
+      for(var j2=0;j2<layers[li2+1];j2++){
+        var wv=weights[li2+'_'+i2+'_'+j2]||0;
+        var alpha=0.15+0.85*Math.abs(wv);
+        ctx.strokeStyle=wv>=0?'#2F6FD6':'#D97724';
+        ctx.globalAlpha=Math.min(alpha,1);
+        ctx.lineWidth=0.5+2*Math.abs(wv);
+        ctx.beginPath();
+        ctx.moveTo(pos[li2].x,pos[li2].ys[i2]);
+        ctx.lineTo(pos[li2+1].x,pos[li2+1].ys[j2]);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.globalAlpha=1;
+  // 节点
+  for(var l=0;l<layers.length;l++){
+    for(var k=0;k<layers[l];k++){
+      var cx=pos[l].x, cy=pos[l].ys[k];
+      var val=acts?acts[l][k]:null;
+      var r=layers[l]>5?13:16;
+      ctx.beginPath();ctx.arc(cx,cy,r,0,7);
+      ctx.fillStyle=val!==null?(val>0.5?'#1E40AF':'#D97706'):'#ECF3FC';
+      ctx.fill();
+      ctx.strokeStyle='#1B3A6B';ctx.lineWidth=1.5;ctx.stroke();
+      if(val!==null){
+        ctx.fillStyle='#fff';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+        ctx.fillText(val.toFixed(1),cx,cy+3);ctx.textAlign='left';
+      }
+    }
+    // 层标签（按实际位置命名：首层=输入层、末层=输出层、中间=隐藏层 k）
+    var lname = (l===0) ? '输入层' : ((l===layers.length-1) ? '输出层' : ('隐藏层 '+l));
+    ctx.fillStyle='#1B3A6B';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+    ctx.fillText(lname+' ('+layers[l]+')',pos[l].x,bot+22);ctx.textAlign='left';
+  }
+  // 参数统计
+  document.getElementById('pc').textContent=countParams();
+  document.getElementById('lc').textContent=layers.length;
+  // 信息
+  ctx.fillStyle='#76869F';ctx.font='12px sans-serif';
+  ctx.fillText('连线颜色: 蓝=正权重 橙=负权重 · 粗细=权重大小 · 节点颜色: 深蓝=激活>0.5 琥珀=激活≤0.5',20,H-20);
+}
+rebuild();
+</script>
+</body>
+</html>

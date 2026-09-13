@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>实验台① 神经元逻辑门</title>
+<style>
+  :root { --navy:#1B3A6B; --blue:#2F6FD6; --pale:#ECF3FC; --ink:#22324A; --mute:#76869F; --orange:#D97724; --green:#2E7D52; --red:#B8413A; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei",sans-serif; background:#f4f6f9; color:var(--ink); padding:18px; }
+  .head { max-width:1080px; margin:0 auto 14px; background:var(--navy); border-radius:10px; padding:14px 22px; color:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .head h1 { font-size:19px; } .head span { font-size:12.5px; color:#8FB4E8; }
+  .wrap { max-width:1080px; margin:0 auto; display:flex; gap:14px; }
+  .panel { width:300px; background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  .stage { flex:1; background:#fff; border-radius:10px; padding:14px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+  canvas { display:block; border-radius:8px; background:#FAFBFD; border:1px solid #D9E4F2; max-width:100%; }
+  h3 { font-size:13.5px; color:var(--navy); margin:10px 0 8px; border-left:3px solid var(--blue); padding-left:8px; }
+  label { font-size:12.5px; display:flex; justify-content:space-between; margin:6px 0 2px; }
+  label b { color:var(--blue); }
+  input[type=range] { width:100%; accent-color:var(--blue); }
+  .preset { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px; }
+  .preset button { border:none; border-radius:7px; padding:7px 0; font-size:12.5px; cursor:pointer; background:var(--pale); color:var(--navy); font-family:inherit; }
+  .preset button:hover { background:#DCE9FA; }
+  .truth { margin-top:12px; }
+  .tr-row { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; margin:3px 0; font-size:13px; }
+  .tr-row .inp { color:var(--mute); font-family:Consolas,monospace; }
+  .tr-row .out { font-weight:bold; font-family:Consolas,monospace; }
+  .ok { background:#E8F7EE; } .bad { background:#FBEAE9; }
+  .tip { max-width:1080px; margin:12px auto 0; background:#FFF9EC; border:1px dashed #EAB308; border-radius:8px; padding:10px 16px; font-size:12.5px; color:#713F12; }
+  .formula { background:var(--navy); color:#fff; border-radius:8px; padding:9px 12px; font-size:13px; margin-top:10px; text-align:center; font-family:Consolas,monospace; }
+  @media (max-width:720px){ .wrap{flex-direction:column;} }
+</style>
+</head>
+<body>
+<div class="head"><h1>实验台① · 神经元逻辑门</h1><span>知识点：感知机 · 权重与偏置 · 决策线 · 逻辑门</span></div>
+<div class="wrap">
+  <div class="panel">
+    <h3>权重与偏置</h3>
+    <label>权重 w₁ <b id="w1V">1.00</b></label>
+    <input type="range" id="w1" min="-2" max="2" step="0.05" value="1" oninput="w1V.textContent=(+this.value).toFixed(2); update()">
+    <label>权重 w₂ <b id="w2V">1.00</b></label>
+    <input type="range" id="w2" min="-2" max="2" step="0.05" value="1" oninput="w2V.textContent=(+this.value).toFixed(2); update()">
+    <label>偏置 b <b id="bV">-0.50</b></label>
+    <input type="range" id="b" min="-2.5" max="1.5" step="0.05" value="-0.5" oninput="bV.textContent=(+this.value).toFixed(2); update()">
+    <h3>预设</h3>
+    <div class="preset">
+      <button onclick="setP(1,1,-1.5)">AND</button>
+      <button onclick="setP(1,1,-0.5)">OR</button>
+      <button onclick="setP(-1,-1,1.5)">NAND</button>
+      <button onclick="setP(1.5,0.5,-0.75)">偏重 x₁</button>
+    </div>
+    <div class="formula">z = w₁x₁ + w₂x₂ + b<br>输出 = z &gt; 0 ? 1 : 0</div>
+  </div>
+  <div class="stage">
+    <canvas id="cv" width="720" height="440"></canvas>
+    <div class="truth" id="truth"></div>
+  </div>
+</div>
+<div class="tip"><b>课堂玩法：</b>① 点 AND/OR 预设，看决策线如何把四个点分开、真值表如何全对；② 手动拖权重和偏置，理解"调参数=改行为"；③ 挑战：试着调出 XOR（异或）——你会发现永远做不到，这就是单层感知机的天花板（课时二的伏笔）。</div>
+<script>
+var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+var W=cv.width,H=cv.height,PAD=45;
+var w1=1,w2=1,b=-0.5;
+var pts=[[0,0],[0,1],[1,0],[1,1]];
+function PX(x){return PAD+x*(W-2*PAD)}
+function PY(y){return H-PAD-y*(H-2*PAD)}
+function out(x,y){return w1*x+w2*y+b>0?1:0}
+function setP(a,c,d){w1=a;w2=c;b=d;
+  document.getElementById('w1').value=a;document.getElementById('w1V').textContent=a.toFixed(2);
+  document.getElementById('w2').value=c;document.getElementById('w2V').textContent=c.toFixed(2);
+  document.getElementById('b').value=d;document.getElementById('bV').textContent=d.toFixed(2);
+  update();}
+function update(){
+  // 画布
+  ctx.clearRect(0,0,W,H);
+  // 决策线 z=0 → x2 = -(w1*x1+b)/w2
+  var x1a=0,x1b=1;
+  var x2a=-(w1*x1a+b)/w2, x2b=-(w1*x1b+b)/w2;
+  // 裁剪到可视范围
+  function clipY(x, x2y){
+    // y in [0,1] 对应 PY
+    var y=x2y;
+    return Math.max(-0.4,Math.min(1.4,y));
+  }
+  var ya=clipY(0,x2a), yb=clipY(1,x2b);
+  ctx.strokeStyle='#2F6FD6';ctx.lineWidth=3;ctx.setLineDash([7,5]);
+  ctx.beginPath();
+  ctx.moveTo(PX(0),PY(ya));
+  ctx.lineTo(PX(1),PY(yb));
+  ctx.stroke();ctx.setLineDash([]);
+  // 决策线标签
+  ctx.fillStyle='#2F6FD6';ctx.font='bold 13px sans-serif';
+  ctx.fillText('决策线: w₁x₁+w₂x₂+b=0',PX(0.05),PY(Math.min(ya,yb)+0.06*(1.4-Math.min(ya,yb))));
+  // 网格
+  ctx.strokeStyle='#E3EAF3';ctx.lineWidth=1;
+  for(var g=0;g<=1;g+=0.25){ctx.beginPath();ctx.moveTo(PX(g),PY(0));ctx.lineTo(PX(g),PY(1));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(PX(0),PY(g));ctx.lineTo(PX(1),PY(g));ctx.stroke();}
+  ctx.fillStyle='#76869F';ctx.font='11px sans-serif';
+  ctx.fillText('x₁ →',W-PAD-40,H-12);ctx.fillText('x₂ ↑',6,20);
+  // 四个点
+  for(var i=0;i<4;i++){
+    var x=pts[i][0],y=pts[i][1],o=out(x,y);
+    ctx.beginPath();ctx.arc(PX(x),PY(y),15,0,7);
+    ctx.fillStyle=o===1?'#2F6FD6':'#D97724';ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=2.5;ctx.stroke();
+    ctx.fillStyle='#fff';ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+    ctx.fillText(o,PX(x),PY(y)+3.5);ctx.textAlign='left';
+  }
+  // 真值表
+  var tb=document.getElementById('truth');tb.innerHTML='';
+  tb.innerHTML='<h3 style="margin-top:0">真值表</h3>';
+  var targets={'AND':[0,0,0,1],'OR':[0,1,1,1],'NAND':[1,1,1,0]};
+  // 找出当前最接近的逻辑门（平局时取先出现的）
+  var best='',bestScore=-1;
+  for(var k in targets){var s=0;for(var j=0;j<4;j++){s+=out(pts[j][0],pts[j][1])===targets[k][j]?1:0}if(s>bestScore){bestScore=s;best=k}}
+  var tgt=targets[best];
+  for(var j=0;j<4;j++){
+    var x=pts[j][0],y=pts[j][1],o=out(x,y);
+    var row=document.createElement('div');
+    row.className='tr-row '+(o===tgt[j]?'ok':'bad');
+    row.innerHTML='<span class="inp">('+x+', '+y+')</span><span style="flex:1"></span><span class="out">输出 '+o+'</span>'
+      +'<span style="flex:1"></span><span style="font-size:11px;color:var(--mute)">'+best+' 目标 '+tgt[j]+'</span>';
+    tb.appendChild(row);
+  }
+  if(bestScore===4){tb.innerHTML+='<div style="margin-top:8px;padding:8px;background:#E8F7EE;border-radius:6px;font-size:13px;color:var(--green);font-weight:bold">✅ 完美实现了 '+best+' 门！</div>';}
+  else{tb.innerHTML+='<div style="margin-top:8px;padding:8px;background:#FBEAE9;border-radius:6px;font-size:13px;color:var(--red)">还没全对：最接近 '+best+' 门（对了 '+bestScore+' / 4 项），继续调权重试试</div>';}
+}
+setP(1,1,-0.5);
+</script>
+</body>
+</html>

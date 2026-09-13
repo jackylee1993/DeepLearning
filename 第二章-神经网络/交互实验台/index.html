@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>第二章 · 交互实验台总入口</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei",sans-serif; background:#f4f6f9; color:#22324A; padding:30px 18px; }
+  .wrap { max-width:980px; margin:0 auto; }
+  h1 { color:#1B3A6B; font-size:24px; margin-bottom:6px; }
+  .sub { color:#76869F; font-size:13px; margin-bottom:24px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+  .card { background:#fff; border-radius:12px; padding:18px 20px; box-shadow:0 2px 10px rgba(0,0,0,.06); text-decoration:none; color:inherit; border:1px solid #D9E4F2; transition:transform .15s; }
+  .card:hover { transform:translateY(-3px); box-shadow:0 6px 18px rgba(0,0,0,.1); }
+  .card .num { font-size:12px; color:#2F6FD6; font-weight:bold; }
+  .card h3 { font-size:16px; color:#1B3A6B; margin:6px 0 8px; }
+  .card p { font-size:12.5px; color:#76869F; line-height:1.6; }
+  .card .ch { display:inline-block; margin-top:10px; font-size:11px; background:#ECF3FC; color:#1B3A6B; border-radius:999px; padding:3px 10px; }
+  .note { margin-top:22px; background:#FFF9EC; border:1px dashed #EAB308; border-radius:10px; padding:12px 18px; font-size:12.5px; color:#713F12; line-height:1.8; }
+  .use { margin-top:14px; background:#ECF3FC; border-radius:10px; padding:12px 18px; font-size:13px; color:#1B3A6B; line-height:1.9; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>第二章 · 神经网络 交互实验台</h1>
+  <div class="sub">配合《深度学习》第二章课件使用 · 双击任意卡片即可在浏览器中打开 · 无需联网</div>
+  <div class="grid">
+    <a class="card" href="01_神经元逻辑门.html"><div class="num">实验台 ①</div><h3>神经元逻辑门</h3><p>拖权重和偏置，看决策线移动、真值表实时更新——亲手"编"出 AND/OR/NAND；挑战调出 XOR，体会单层 FFN 的天花板。</p><span class="ch">课时一 · 神经元</span></a>
+    <a class="card" href="02_反向传播模拟台.html"><div class="num">实验台 ②</div><h3>反向传播模拟台</h3><p>两层小网络自动训练：看前向算出损失、误差逐层倒传、每个参数收到梯度并更新；调大学习率体会震荡。</p><span class="ch">课时二 · 反向传播</span></a>
+    <a class="card" href="03_隐藏层与XOR.html"><div class="num">实验台 ③</div><h3>隐藏层与 XOR</h3><p>FFN 的核心魔法：自动训练中，看隐藏层把"切不开"的 XOR 数据点"揉"到线性可分——单层天花板 vs 两层答案的直观对比。</p><span class="ch">课时一 · FFN 能力</span></a>
+    <a class="card" href="04_FFN结构探索器.html"><div class="num">实验台 ④</div><h3>FFN 结构探索器</h3><p>拖滑块自由搭网络（层数/神经元数），点"前向传播"看数据逐层流动、数值实时显示；对比"单层感知机"与"多层 FFN"的结构差异。</p><span class="ch">课时一 · FFN 结构</span></a>
+  </div>
+  <div class="use"><b>使用建议：</b>上课前先在教室电脑上双击验证可打开；讲课时点击 PPT 对应页的"互动实验台"按钮（超链接）即可全屏演示，按 Esc 返回课件；也可把本文件夹发给学生课后自行探索。</div>
+  <div class="note"><b>配套说明：</b>课时二还引用了第一章的实验台（「感知机训练台」「梯度下降小球」），位于仓库的 <code>../第一章-深度学习概述/交互实验台/</code> 目录，可配合使用。</div>
+</div>
+</body>
+</html>
